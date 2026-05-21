@@ -10,7 +10,7 @@ contract TestAutoDCA is Test {
     address user = makeAddr("user");
 
     function setUp() external {
-        autoDca = new AutoDCA(0x0000000000000000000000000000000000000000);
+        autoDca = new AutoDCA(makeAddr("usdc"));
     }
 
     function testMinimumDepositIsFifty() public view {
@@ -34,7 +34,7 @@ contract TestAutoDCA is Test {
 
     function testDepositRevertsIfAmountBelowMinimum() public {
         vm.prank(user);
-        vm.expectRevert("Minimum deposit is 50 USDC");
+        vm.expectRevert(AutoDCA.AutoDCA__AmountBelowMinimum.selector);
         autoDca.deposit(40e6);
     }
 }
