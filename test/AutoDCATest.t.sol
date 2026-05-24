@@ -19,16 +19,19 @@ contract TestAutoDCA is Test {
         usdc.mint(user, USER_STARTING_BALANCE);
     }
 
+    function testConstructorIfAddressIsZero() public {
+        vm.expectRevert(AutoDCA.AutoDCA__InvalidTokenAddress.selector);
+        new AutoDCA(address(0));
+    }
+
     function testMinimumDepositIsFifty() public view {
         assertEq(autoDca.MINIMUM_DEPOSIT(), 50e6);
     }
 
     function testDepositSuccess() public {
         vm.startPrank(user);
-
         usdc.approve(address(autoDca), DEPOSIT_AMOUNT);
         autoDca.deposit(DEPOSIT_AMOUNT);
-
         vm.stopPrank();
 
         assertEq(autoDca.userBalances(user), DEPOSIT_AMOUNT);
@@ -38,6 +41,7 @@ contract TestAutoDCA is Test {
 
     function testDepositRevertsIfAmountBelowMinimum() public {
         uint256 amount = autoDca.MINIMUM_DEPOSIT() - 1;
+
         vm.prank(user);
         vm.expectRevert(AutoDCA.AutoDCA__AmountBelowMinimum.selector);
         autoDca.deposit(amount);
@@ -47,11 +51,9 @@ contract TestAutoDCA is Test {
         uint256 withdrawAmount = 30e6;
 
         vm.startPrank(user);
-
         usdc.approve(address(autoDca), DEPOSIT_AMOUNT);
         autoDca.deposit(DEPOSIT_AMOUNT);
         autoDca.withdraw(withdrawAmount);
-
         vm.stopPrank();
 
         assertEq(autoDca.userBalances(user), DEPOSIT_AMOUNT - withdrawAmount);
@@ -67,13 +69,85 @@ contract TestAutoDCA is Test {
 
     function testWithdrawRevertsIfInsufficientBalance() public {
         vm.startPrank(user);
-
         usdc.approve(address(autoDca), DEPOSIT_AMOUNT);
         autoDca.deposit(DEPOSIT_AMOUNT);
 
         vm.expectRevert(AutoDCA.AutoDCA__InsufficientBalance.selector);
         autoDca.withdraw(DEPOSIT_AMOUNT + 1);
+        vm.stopPrank();
+    }
 
+    function testCreateOrderSuccess() public {
+        address tokenToBuy = makeAddr("mockETH");
+        uint256 usdcAmountPerSwap = 60e6;
+        uint256 interval = 1 days;
+
+        vm.prank(user);
+        uint256 orderId = autoDca.createOrder(tokenToBuy, usdcAmountPerSwap, interval);
+        (
+            address orderUser,
+            address ordertokenToBuy,
+            uint256 orderUsdcAmountPerSwap,
+            uint256 orderInterval,
+            bool orderIsActive
+        ) = autoDca.orders(orderId);
+
+        assertEq(orderUser, user);
+        assertEq(ordertokenToBuy, tokenToBuy);
+        assertEq(orderUsdcAmountPerSwap, usdcAmountPerSwap);
+        assertEq(orderInterval, interval);
+        assertEq(orderIsActive, true);
+    }
+
+    function testCreateOrderRevertsIftokenToBuyIsZero() public {
+        vm.prank(user);
+        vm.expectRevert(AutoDCA.AutoDCA__InvalidTokenAddress.selector);
+        autoDca.createOrder(address(0), 60e6, 1 days);
+    }
+
+    function testCreateOrderRevertsIfLowAmountPerSwap() public {
+        vm.prank(user);
+        vm.expectRevert(AutoDCA.AutoDCA__AmountBelowMinimum.selector);
+        autoDca.createOrder(makeAddr("mockETH"), 20e6, 1 days);
+    }
+
+    function testCreateOrderRevertsIfIntervalBelowMinimum() public {
+        vm.prank(user);
+        vm.expectRevert(AutoDCA.AutoDCA__InvalidInterval.selector);
+        autoDca.createOrder(makeAddr("mockETH"), 100e6, 1 hours);
+    }
+
+    function testCancelOrderSuccess() public {
+        address tokenToBuy = makeAddr("mockETH");
+
+        vm.startPrank(user);
+        uint256 orderId = autoDca.createOrder(tokenToBuy, 60e6, 1 days);
+        autoDca.cancelOrder(orderId);
+        vm.stopPrank();
+
+        (,,,,bool isActive) = autoDca.orders(orderId);
+        assertFalse(isActive);
+        assertEq(autoDca.activeUserOrderIds(user, tokenToBuy), 0);
+    }
+
+    function testCancelOrderRevertsIfNotOrderOwner() public {
+        address user2 = makeAddr("user2");
+
+        vm.prank(user);
+        uint256 orderId = autoDca.createOrder(makeAddr("mockETH"), 60e6, 1 days);
+
+        vm.prank(user2);
+        vm.expectRevert(AutoDCA.AutoDCA__NotOrderOwner.selector);
+        autoDca.cancelOrder(orderId);
+    }
+
+    function testCancelOrderRevertsIfOrderAlreadyInactive() public {
+        vm.startPrank(user);
+        uint256 orderId = autoDca.createOrder(makeAddr("mockETH"), 60e6, 1 days);
+        autoDca.cancelOrder(orderId);
+
+        vm.expectRevert(AutoDCA.AutoDCA__OrderAlreadyInactive.selector);
+        autoDca.cancelOrder(orderId);
         vm.stopPrank();
     }
 }

@@ -12,16 +12,41 @@ contract AutoDCA {
     error AutoDCA__AmountBelowMinimum();
     error AutoDCA__AmountMustBeGreaterThanZero();
     error AutoDCA__InsufficientBalance();
+    error AutoDCA__InvalidInterval();
+    error AutoDCA__NotOrderOwner();
+    error AutoDCA__OrderAlreadyInactive();
+    error AutoDCA__OrderAlreadyExist();
+
+    struct Order {
+        address user;
+        address tokenToBuy;
+        uint256 usdcAmountPerSwap;
+        uint256 interval;
+        bool isActive;
+    }
 
     address public immutable I_USDC;
     uint256 public constant MINIMUM_DEPOSIT = 50e6;
+    uint256 public constant MINIMUM_INTERVAL = 1 days;
+    uint256 public nextOrderId = 1;
     mapping(address => uint256) public userBalances;
+    mapping(uint256 => Order) public orders;
+    mapping(address user => mapping(address tokenAddress => uint256 orderId)) public activeUserOrderIds;
 
     /* Events */
     event Deposited(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
+    event OrderCreated(
+        uint256 indexed orderId,
+        address indexed user,
+        address indexed tokenToBuy,
+        uint256 usdcAmountPerSwap,
+        uint256 interval
+    );
+    event OrderCancelled(uint256 indexed orderId);
 
     constructor(address usdc) {
+        if (usdc == address(0)) revert AutoDCA__InvalidTokenAddress();
         I_USDC = usdc;
     }
 
@@ -38,5 +63,38 @@ contract AutoDCA {
         userBalances[msg.sender] -= amount;
         IERC20(I_USDC).safeTransfer(msg.sender, amount);
         emit Withdrawn(msg.sender, amount);
+    }
+
+    function createOrder(address tokenToBuy, uint256 usdcAmountPerSwap, uint256 interval) external returns (uint256) {
+        if (tokenToBuy == address(0)) revert AutoDCA__InvalidTokenAddress();
+        if (activeUserOrderIds[msg.sender][tokenToBuy] != 0) revert AutoDCA__OrderAlreadyExist();
+        if (usdcAmountPerSwap < MINIMUM_DEPOSIT) revert AutoDCA__AmountBelowMinimum();
+        if (interval < MINIMUM_INTERVAL) revert AutoDCA__InvalidInterval();
+        uint256 orderId = nextOrderId;
+
+        orders[orderId] = Order({
+            user: msg.sender,
+            tokenToBuy: tokenToBuy,
+            usdcAmountPerSwap: usdcAmountPerSwap,
+            interval: interval,
+            isActive: true
+        });
+
+        activeUserOrderIds[msg.sender][tokenToBuy] = orderId;
+        nextOrderId++;
+
+        emit OrderCreated(orderId, msg.sender, tokenToBuy, usdcAmountPerSwap, interval);
+        return orderId;
+    }
+
+    function cancelOrder(uint256 orderId) external {
+        Order storage order = orders[orderId];
+        if (order.user != msg.sender) revert AutoDCA__NotOrderOwner();
+        if (!order.isActive) revert AutoDCA__OrderAlreadyInactive();
+
+        order.isActive = false;
+        activeUserOrderIds[msg.sender][order.tokenToBuy] = 0;
+
+        emit OrderCancelled(orderId);
     }
 }
