@@ -15,7 +15,6 @@ contract AutoDCA {
     error AutoDCA__InvalidInterval();
     error AutoDCA__NotOrderOwner();
     error AutoDCA__OrderAlreadyInactive();
-    error AutoDCA__OrderAlreadyExist();
 
     struct Order {
         address user;
@@ -43,6 +42,7 @@ contract AutoDCA {
         uint256 usdcAmountPerSwap,
         uint256 interval
     );
+    event OrderUpdated(uint256 indexed orderId, uint256 usdcAmountPerSwap, uint256 interval);
     event OrderCancelled(uint256 indexed orderId);
 
     constructor(address usdc) {
@@ -67,11 +67,16 @@ contract AutoDCA {
 
     function createOrder(address tokenToBuy, uint256 usdcAmountPerSwap, uint256 interval) external returns (uint256) {
         if (tokenToBuy == address(0)) revert AutoDCA__InvalidTokenAddress();
-        if (activeUserOrderIds[msg.sender][tokenToBuy] != 0) revert AutoDCA__OrderAlreadyExist();
         if (usdcAmountPerSwap < MINIMUM_DEPOSIT) revert AutoDCA__AmountBelowMinimum();
         if (interval < MINIMUM_INTERVAL) revert AutoDCA__InvalidInterval();
-        uint256 orderId = nextOrderId;
 
+        uint256 existingOrderId = activeUserOrderIds[msg.sender][tokenToBuy];
+        if (existingOrderId != 0) {
+            updateOrder(existingOrderId, usdcAmountPerSwap, interval);
+            return existingOrderId;
+        }
+
+        uint256 orderId = nextOrderId;
         orders[orderId] = Order({
             user: msg.sender,
             tokenToBuy: tokenToBuy,
@@ -85,6 +90,18 @@ contract AutoDCA {
 
         emit OrderCreated(orderId, msg.sender, tokenToBuy, usdcAmountPerSwap, interval);
         return orderId;
+    }
+
+    function updateOrder(uint256 orderId, uint256 usdcAmountPerSwap, uint256 interval) private {
+        Order storage order = orders[orderId];
+
+        if (usdcAmountPerSwap < MINIMUM_DEPOSIT) revert AutoDCA__AmountBelowMinimum();
+        if (interval < MINIMUM_INTERVAL) revert AutoDCA__InvalidInterval();
+
+        order.usdcAmountPerSwap = usdcAmountPerSwap;
+        order.interval = interval;
+
+        emit OrderUpdated(orderId, usdcAmountPerSwap, interval);
     }
 
     function cancelOrder(uint256 orderId) external {
