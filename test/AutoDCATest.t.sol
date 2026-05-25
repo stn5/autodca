@@ -24,6 +24,8 @@ contract TestAutoDCA is Test {
         new AutoDCA(address(0));
     }
 
+    /* Tests for deposit func */
+
     function testMinimumDepositIsFifty() public view {
         assertEq(autoDca.MINIMUM_DEPOSIT(), 50e6);
     }
@@ -46,6 +48,8 @@ contract TestAutoDCA is Test {
         vm.expectRevert(AutoDCA.AutoDCA__AmountBelowMinimum.selector);
         autoDca.deposit(amount);
     }
+
+    /* Tests for withdraw func */
 
     function testWithdrawSuccess() public {
         uint256 withdrawAmount = 30e6;
@@ -76,6 +80,8 @@ contract TestAutoDCA is Test {
         autoDca.withdraw(DEPOSIT_AMOUNT + 1);
         vm.stopPrank();
     }
+
+    /* Tests for createOrder func */
 
     function testCreateOrderSuccess() public {
         address tokenToBuy = makeAddr("mockETH");
@@ -117,6 +123,46 @@ contract TestAutoDCA is Test {
         autoDca.createOrder(makeAddr("mockETH"), 100e6, 1 hours);
     }
 
+    /* Tests for updateOrder func */
+
+    function testUpdateOrderSuccess() public {
+        address tokenToBuy = makeAddr("mockETH");
+        uint256 updatedUsdcAmountToSwap = 200e6;
+        uint256 updatedInterval = 10 days;
+
+        vm.startPrank(user);
+        uint256 orderId = autoDca.createOrder(tokenToBuy, 100e6, 2 weeks);
+        autoDca.updateOrder(orderId, updatedUsdcAmountToSwap, updatedInterval);
+        vm.stopPrank();
+
+        (
+            address orderUser,
+            address orderTokenToBuy,
+            uint256 orderUsdcAmountPerSwap,
+            uint256 orderInterval,
+            bool orderIsActive
+        ) = autoDca.orders(orderId);
+
+        assertEq(orderUser, user);
+        assertEq(orderTokenToBuy, tokenToBuy);
+        assertEq(orderUsdcAmountPerSwap, updatedUsdcAmountToSwap);
+        assertEq(orderInterval, updatedInterval);
+        assertTrue(orderIsActive);
+    }
+
+    function testUpdateOrderRevertsIfNotOwner() public {
+        address user2 = makeAddr("user2");
+
+        vm.prank(user);
+        uint256 orderId = autoDca.createOrder(makeAddr("mockETH"), 100e6, 2 weeks);
+
+        vm.prank(user2);
+        vm.expectRevert(AutoDCA.AutoDCA__NotOrderOwner.selector);
+        autoDca.updateOrder(orderId, 200e6, 10 days);
+    }
+
+    /* Tests for cancelOrder func */
+
     function testCancelOrderSuccess() public {
         address tokenToBuy = makeAddr("mockETH");
 
@@ -125,7 +171,7 @@ contract TestAutoDCA is Test {
         autoDca.cancelOrder(orderId);
         vm.stopPrank();
 
-        (,,,,bool isActive) = autoDca.orders(orderId);
+        (,,,, bool isActive) = autoDca.orders(orderId);
         assertFalse(isActive);
         assertEq(autoDca.activeUserOrderIds(user, tokenToBuy), 0);
     }

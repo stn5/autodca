@@ -15,6 +15,7 @@ contract AutoDCA {
     error AutoDCA__InvalidInterval();
     error AutoDCA__NotOrderOwner();
     error AutoDCA__OrderAlreadyInactive();
+    error AutoDCA__OrderAlreadyExist();
 
     struct Order {
         address user;
@@ -67,14 +68,9 @@ contract AutoDCA {
 
     function createOrder(address tokenToBuy, uint256 usdcAmountPerSwap, uint256 interval) external returns (uint256) {
         if (tokenToBuy == address(0)) revert AutoDCA__InvalidTokenAddress();
+        if (activeUserOrderIds[msg.sender][tokenToBuy] != 0) revert AutoDCA__OrderAlreadyExist();
         if (usdcAmountPerSwap < MINIMUM_DEPOSIT) revert AutoDCA__AmountBelowMinimum();
         if (interval < MINIMUM_INTERVAL) revert AutoDCA__InvalidInterval();
-
-        uint256 existingOrderId = activeUserOrderIds[msg.sender][tokenToBuy];
-        if (existingOrderId != 0) {
-            updateOrder(existingOrderId, usdcAmountPerSwap, interval);
-            return existingOrderId;
-        }
 
         uint256 orderId = nextOrderId;
         orders[orderId] = Order({
@@ -92,9 +88,10 @@ contract AutoDCA {
         return orderId;
     }
 
-    function updateOrder(uint256 orderId, uint256 usdcAmountPerSwap, uint256 interval) private {
+    function updateOrder(uint256 orderId, uint256 usdcAmountPerSwap, uint256 interval) external {
         Order storage order = orders[orderId];
-
+        if (order.user != msg.sender) revert AutoDCA__NotOrderOwner();
+        if (!order.isActive) revert AutoDCA__OrderAlreadyInactive();
         if (usdcAmountPerSwap < MINIMUM_DEPOSIT) revert AutoDCA__AmountBelowMinimum();
         if (interval < MINIMUM_INTERVAL) revert AutoDCA__InvalidInterval();
 
