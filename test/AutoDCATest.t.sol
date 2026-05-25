@@ -95,6 +95,7 @@ contract TestAutoDCA is Test {
             address ordertokenToBuy,
             uint256 orderUsdcAmountPerSwap,
             uint256 orderInterval,
+            ,
             bool orderIsActive
         ) = autoDca.orders(orderId);
 
@@ -140,6 +141,7 @@ contract TestAutoDCA is Test {
             address orderTokenToBuy,
             uint256 orderUsdcAmountPerSwap,
             uint256 orderInterval,
+            ,
             bool orderIsActive
         ) = autoDca.orders(orderId);
 
@@ -171,7 +173,7 @@ contract TestAutoDCA is Test {
         autoDca.cancelOrder(orderId);
         vm.stopPrank();
 
-        (,,,, bool isActive) = autoDca.orders(orderId);
+        (,,,,, bool isActive) = autoDca.orders(orderId);
         assertFalse(isActive);
         assertEq(autoDca.activeUserOrderIds(user, tokenToBuy), 0);
     }

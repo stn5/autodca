@@ -3,8 +3,9 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/interfaces/AutomationCompatibleInterface.sol";
 
-contract AutoDCA {
+contract AutoDCA is AutomationCompatibleInterface {
     using SafeERC20 for IERC20;
 
     /* Errors */
@@ -22,6 +23,7 @@ contract AutoDCA {
         address tokenToBuy;
         uint256 usdcAmountPerSwap;
         uint256 interval;
+        uint256 lastExecuted;
         bool isActive;
     }
 
@@ -78,6 +80,7 @@ contract AutoDCA {
             tokenToBuy: tokenToBuy,
             usdcAmountPerSwap: usdcAmountPerSwap,
             interval: interval,
+            lastExecuted: 0,
             isActive: true
         });
 
@@ -111,4 +114,20 @@ contract AutoDCA {
 
         emit OrderCancelled(orderId);
     }
+
+    function checkUpkeep(bytes calldata) external view override returns (bool upkeepNeeded, bytes memory performData) {
+        for (uint256 orderId = 1; orderId < nextOrderId; orderId++) {
+            Order memory order = orders[orderId];
+            bool hasEnoughBalance = userBalances[order.user] >= order.usdcAmountPerSwap;
+            bool timePassed = order.lastExecuted == 0 || block.timestamp >= order.lastExecuted + order.interval;
+
+            if (order.isActive && hasEnoughBalance && timePassed) {
+                return (true, abi.encode(orderId));
+            }
+        }
+
+        return (false, "");
+    }
+
+    function performUpkeep(bytes calldata) external override {}
 }
