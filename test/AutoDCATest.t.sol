@@ -12,7 +12,7 @@ contract TestAutoDCA is Test {
     address swapRouter = makeAddr("swapRouter");
 
     uint256 constant USER_STARTING_BALANCE = 500e6;
-    uint256 constant DEPOSIT_AMOUNT = 70e6;
+    uint256 constant DEPOSIT_AMOUNT = 120e6;
 
     function setUp() external {
         usdc = new MockUSDC();
@@ -60,11 +60,9 @@ contract TestAutoDCA is Test {
     function testWithdrawSuccess() public {
         uint256 withdrawAmount = 30e6;
 
-        vm.startPrank(user);
-        usdc.approve(address(autoDca), DEPOSIT_AMOUNT);
-        autoDca.deposit(DEPOSIT_AMOUNT);
+        _deposit(DEPOSIT_AMOUNT);
+        vm.prank(user);
         autoDca.withdraw(withdrawAmount);
-        vm.stopPrank();
 
         assertEq(autoDca.userBalances(user), DEPOSIT_AMOUNT - withdrawAmount);
         assertEq(usdc.balanceOf(user), USER_STARTING_BALANCE - DEPOSIT_AMOUNT + withdrawAmount);
@@ -78,13 +76,11 @@ contract TestAutoDCA is Test {
     }
 
     function testWithdrawRevertsIfInsufficientBalance() public {
-        vm.startPrank(user);
-        usdc.approve(address(autoDca), DEPOSIT_AMOUNT);
-        autoDca.deposit(DEPOSIT_AMOUNT);
+        _deposit(DEPOSIT_AMOUNT);
 
+        vm.prank(user);
         vm.expectRevert(AutoDCA.AutoDCA__InsufficientBalance.selector);
         autoDca.withdraw(DEPOSIT_AMOUNT + 1);
-        vm.stopPrank();
     }
 
     /* Tests for createOrder func */
@@ -203,6 +199,83 @@ contract TestAutoDCA is Test {
 
         vm.expectRevert(AutoDCA.AutoDCA__OrderAlreadyInactive.selector);
         autoDca.cancelOrder(orderId);
+        vm.stopPrank();
+    }
+
+    /* Tests for checkUpkeep func */
+
+    function testCheckUpkeepIfNoOrders() public {
+        (bool upkeepNeeded,) = autoDca.checkUpkeep("");
+        assertFalse(upkeepNeeded);
+    }
+
+    function testCheckUpkeepIfUserHasNoBalance() public {
+        vm.prank(user);
+        autoDca.createOrder(makeAddr("mockETH"), 100e6, 7 days);
+
+        (bool upkeepNeeded,) = autoDca.checkUpkeep("");
+        assertFalse(upkeepNeeded);
+    }
+
+    function testCheckUpkeepIfIntervalNotPassed() public {
+        _deposit(DEPOSIT_AMOUNT);
+        vm.prank(user);
+        autoDca.createOrder(makeAddr("mockETH"), 100e6, 7 days);
+
+        (bool upkeepNeeded,) = autoDca.checkUpkeep("");
+        assertFalse(upkeepNeeded);
+    }
+
+    function testCheckUpkeepIfOrderIsReady() public {
+        _deposit(DEPOSIT_AMOUNT);
+        vm.prank(user);
+        uint256 orderId = autoDca.createOrder(makeAddr("mockETH"), 100e6, 7 days);
+
+        vm.warp(block.timestamp + 10 days);
+
+        (bool upkeepNeeded, bytes memory performData) = autoDca.checkUpkeep("");
+        assertTrue(upkeepNeeded);
+        assertEq(abi.decode(performData, (uint256)), orderId);
+    }
+
+    /* Tests for performUpkeep func */
+
+    function testPerformUpkeepSuccess() public {
+        _deposit(DEPOSIT_AMOUNT);
+        vm.prank(user);
+        uint256 orderId = autoDca.createOrder(makeAddr("mockETH"), 100e6, 7 days);
+
+        vm.warp(block.timestamp + 10 days);
+
+        autoDca.performUpkeep(abi.encode(orderId));
+        assertEq(autoDca.userBalances(user), DEPOSIT_AMOUNT - 100e6);
+    }
+
+    function testPerformUpkeepRevertsIfInsufficientBalance() public {
+        vm.prank(user);
+        uint256 orderId = autoDca.createOrder(makeAddr("mockETH"), 100e6, 7 days);
+
+        vm.warp(block.timestamp + 10 days);
+
+        vm.expectRevert(AutoDCA.AutoDCA__InsufficientBalance.selector);
+        autoDca.performUpkeep(abi.encode(orderId));
+    }
+
+    function testPerformUpkeepRevertsIfTimeNotPassed() public {
+        _deposit(DEPOSIT_AMOUNT);
+        vm.prank(user);
+        uint256 orderId = autoDca.createOrder(makeAddr("mockETH"), 100e6, 7 days);
+
+        vm.expectRevert(AutoDCA.AutoDCA__InvalidInterval.selector);
+        autoDca.performUpkeep(abi.encode(orderId));
+    }
+
+    /* Deposit helper */
+
+    function _deposit(uint256 amount) internal {
+        vm.startPrank(user);
+        usdc.approve(address(autoDca), amount);
+        autoDca.deposit(amount);
         vm.stopPrank();
     }
 }

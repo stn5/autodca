@@ -53,7 +53,7 @@ contract AutoDCA is AutomationCompatibleInterface {
         address indexed user, 
         address indexed tokenToBuy, 
         uint256 usdcAmountSpent,
-        uint256 timestamp
+        uint256 executedAt
     );
     event OrderUpdated(uint256 indexed orderId, uint256 usdcAmountPerSwap, uint256 interval);
     event OrderCancelled(uint256 indexed orderId);
