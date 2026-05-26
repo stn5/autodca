@@ -15,6 +15,7 @@ contract HelperConfig is CodeConstants, Script {
 
     struct NetworkConfig {
         address usdc;
+        address swapRouter;
     }
 
     NetworkConfig public localNetworkConfig;
@@ -41,13 +42,15 @@ contract HelperConfig is CodeConstants, Script {
 
     function getSepoliaConfig() public pure returns (NetworkConfig memory) {
         return NetworkConfig({
-            usdc: 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238
+            usdc: 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238,
+            swapRouter: 0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E
         });
     }
 
     function getBaseConfig() public pure returns (NetworkConfig memory) {
         return NetworkConfig({
-            usdc: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+            usdc: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913,
+            swapRouter: 0x2626664c2603336E57B271c5C0b26F421741e481
         });
     }
 
@@ -60,7 +63,10 @@ contract HelperConfig is CodeConstants, Script {
         MockUSDC mockUsdc = new MockUSDC();
         vm.stopBroadcast();
 
-        localNetworkConfig = NetworkConfig({usdc: address(mockUsdc)});
+        localNetworkConfig = NetworkConfig({
+            usdc: address(mockUsdc),
+            swapRouter: makeAddr("swapRouter")
+        });
         return localNetworkConfig;
     }
 }

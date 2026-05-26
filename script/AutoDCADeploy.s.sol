@@ -15,7 +15,7 @@ contract DeployAutoDCA is Script {
         HelperConfig.NetworkConfig memory networkConfig = helperConfig.getConfig();
 
         vm.startBroadcast();
-        AutoDCA autoDca = new AutoDCA(networkConfig.usdc);
+        AutoDCA autoDca = new AutoDCA(networkConfig.usdc, networkConfig.swapRouter);
         vm.stopBroadcast();
 
         return (autoDca, helperConfig);

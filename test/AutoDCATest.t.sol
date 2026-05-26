@@ -9,19 +9,25 @@ contract TestAutoDCA is Test {
     AutoDCA autoDca;
     MockUSDC usdc;
     address user = makeAddr("user");
+    address swapRouter = makeAddr("swapRouter");
 
     uint256 constant USER_STARTING_BALANCE = 500e6;
     uint256 constant DEPOSIT_AMOUNT = 70e6;
 
     function setUp() external {
         usdc = new MockUSDC();
-        autoDca = new AutoDCA(address(usdc));
+        autoDca = new AutoDCA(address(usdc), swapRouter);
         usdc.mint(user, USER_STARTING_BALANCE);
     }
 
-    function testConstructorIfAddressIsZero() public {
+    function testConstructorRevertsIfUsdcAddressIsZero() public {
         vm.expectRevert(AutoDCA.AutoDCA__InvalidTokenAddress.selector);
-        new AutoDCA(address(0));
+        new AutoDCA(address(0), swapRouter);
+    }
+
+    function testConstructorRevertsIfSwapRouterAddressIsZero() public {
+        vm.expectRevert(AutoDCA.AutoDCA__InvalidTokenAddress.selector);
+        new AutoDCA(address(usdc), address(0));
     }
 
     /* Tests for deposit func */
@@ -95,7 +101,7 @@ contract TestAutoDCA is Test {
             address ordertokenToBuy,
             uint256 orderUsdcAmountPerSwap,
             uint256 orderInterval,
-            ,
+            uint256 orderLastExecuted,
             bool orderIsActive
         ) = autoDca.orders(orderId);
 
@@ -103,7 +109,8 @@ contract TestAutoDCA is Test {
         assertEq(ordertokenToBuy, tokenToBuy);
         assertEq(orderUsdcAmountPerSwap, usdcAmountPerSwap);
         assertEq(orderInterval, interval);
-        assertEq(orderIsActive, true);
+        assertEq(orderLastExecuted, block.timestamp);
+        assertTrue(orderIsActive);
     }
 
     function testCreateOrderRevertsIftokenToBuyIsZero() public {

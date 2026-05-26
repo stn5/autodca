@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/interfaces/AutomationCompatibleInterface.sol";
+import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 
 contract AutoDCA is AutomationCompatibleInterface {
     using SafeERC20 for IERC20;
@@ -28,6 +29,8 @@ contract AutoDCA is AutomationCompatibleInterface {
     }
 
     address public immutable I_USDC;
+    ISwapRouter public immutable I_SWAP_ROUTER;
+    uint24 public constant POOL_FEE = 3000;
     uint256 public constant MINIMUM_DEPOSIT = 50e6;
     uint256 public constant MINIMUM_INTERVAL = 1 days;
     uint256 public nextOrderId = 1;
@@ -45,12 +48,20 @@ contract AutoDCA is AutomationCompatibleInterface {
         uint256 usdcAmountPerSwap,
         uint256 interval
     );
+    event OrderExecuted(
+        uint256 indexed orderId, 
+        address indexed user, 
+        address indexed tokenToBuy, 
+        uint256 usdcAmountSpent,
+        uint256 timestamp
+    );
     event OrderUpdated(uint256 indexed orderId, uint256 usdcAmountPerSwap, uint256 interval);
     event OrderCancelled(uint256 indexed orderId);
 
-    constructor(address usdc) {
-        if (usdc == address(0)) revert AutoDCA__InvalidTokenAddress();
+    constructor(address usdc, address swapRouter) {
+        if (usdc == address(0) || swapRouter == address(0)) revert AutoDCA__InvalidTokenAddress();
         I_USDC = usdc;
+        I_SWAP_ROUTER = ISwapRouter(swapRouter);
     }
 
     function deposit(uint256 amount) external {
@@ -80,7 +91,7 @@ contract AutoDCA is AutomationCompatibleInterface {
             tokenToBuy: tokenToBuy,
             usdcAmountPerSwap: usdcAmountPerSwap,
             interval: interval,
-            lastExecuted: 0,
+            lastExecuted: block.timestamp,
             isActive: true
         });
 
@@ -119,7 +130,7 @@ contract AutoDCA is AutomationCompatibleInterface {
         for (uint256 orderId = 1; orderId < nextOrderId; orderId++) {
             Order memory order = orders[orderId];
             bool hasEnoughBalance = userBalances[order.user] >= order.usdcAmountPerSwap;
-            bool timePassed = order.lastExecuted == 0 || block.timestamp >= order.lastExecuted + order.interval;
+            bool timePassed = block.timestamp >= order.lastExecuted + order.interval;
 
             if (order.isActive && hasEnoughBalance && timePassed) {
                 return (true, abi.encode(orderId));
@@ -129,5 +140,21 @@ contract AutoDCA is AutomationCompatibleInterface {
         return (false, "");
     }
 
-    function performUpkeep(bytes calldata) external override {}
+    function performUpkeep(bytes calldata performData) external override {
+        uint256 orderId = abi.decode(performData, (uint256));
+        Order storage order = orders[orderId];
+        bool hasEnoughBalance = userBalances[order.user] >= order.usdcAmountPerSwap;
+        bool timePassed = block.timestamp >= order.lastExecuted + order.interval;
+
+        if (!order.isActive) revert AutoDCA__OrderAlreadyInactive();
+        if (!hasEnoughBalance) revert AutoDCA__InsufficientBalance();
+        if (!timePassed) revert AutoDCA__InvalidInterval();
+
+        userBalances[order.user] -= order.usdcAmountPerSwap;
+        order.lastExecuted = block.timestamp;
+
+        // Uniswap v3 swap 
+
+        emit OrderExecuted(orderId, order.user, order.tokenToBuy, order.usdcAmountPerSwap, block.timestamp);
+    }
 }
