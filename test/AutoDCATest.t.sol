@@ -4,25 +4,27 @@ pragma solidity ^0.8.20;
 import {Test} from "forge-std/Test.sol";
 import {AutoDCA} from "../src/AutoDCA.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
+import {MockSwapRouter} from "./mocks/MockSwapRouter.sol";
 
 contract TestAutoDCA is Test {
     AutoDCA autoDca;
     MockUSDC usdc;
+    MockSwapRouter swapRouter;
     address user = makeAddr("user");
-    address swapRouter = makeAddr("swapRouter");
 
     uint256 constant USER_STARTING_BALANCE = 500e6;
     uint256 constant DEPOSIT_AMOUNT = 120e6;
 
     function setUp() external {
         usdc = new MockUSDC();
-        autoDca = new AutoDCA(address(usdc), swapRouter);
+        swapRouter = new MockSwapRouter();
+        autoDca = new AutoDCA(address(usdc), address(swapRouter));
         usdc.mint(user, USER_STARTING_BALANCE);
     }
 
     function testConstructorRevertsIfUsdcAddressIsZero() public {
         vm.expectRevert(AutoDCA.AutoDCA__InvalidTokenAddress.selector);
-        new AutoDCA(address(0), swapRouter);
+        new AutoDCA(address(0), address(swapRouter));
     }
 
     function testConstructorRevertsIfSwapRouterAddressIsZero() public {
@@ -204,7 +206,7 @@ contract TestAutoDCA is Test {
 
     /* Tests for checkUpkeep func */
 
-    function testCheckUpkeepIfNoOrders() public {
+    function testCheckUpkeepIfNoOrders() public view {
         (bool upkeepNeeded,) = autoDca.checkUpkeep("");
         assertFalse(upkeepNeeded);
     }
@@ -241,14 +243,19 @@ contract TestAutoDCA is Test {
     /* Tests for performUpkeep func */
 
     function testPerformUpkeepSuccess() public {
+        address tokenToBuy = makeAddr("mockETH");
         _deposit(DEPOSIT_AMOUNT);
         vm.prank(user);
-        uint256 orderId = autoDca.createOrder(makeAddr("mockETH"), 100e6, 7 days);
+        uint256 orderId = autoDca.createOrder(tokenToBuy, 100e6, 7 days);
 
         vm.warp(block.timestamp + 10 days);
 
         autoDca.performUpkeep(abi.encode(orderId));
         assertEq(autoDca.userBalances(user), DEPOSIT_AMOUNT - 100e6);
+        assertEq(swapRouter.tokenIn(), address(usdc));
+        assertEq(swapRouter.tokenOut(), tokenToBuy);
+        assertEq(swapRouter.recipient(), user);
+        assertEq(swapRouter.amountIn(), 100e6);
     }
 
     function testPerformUpkeepRevertsIfInsufficientBalance() public {

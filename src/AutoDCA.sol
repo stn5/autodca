@@ -33,6 +33,7 @@ contract AutoDCA is AutomationCompatibleInterface {
     uint24 public constant POOL_FEE = 3000;
     uint256 public constant MINIMUM_DEPOSIT = 50e6;
     uint256 public constant MINIMUM_INTERVAL = 1 days;
+    uint256 public constant SWAP_DEADLINE = 5 minutes;
     uint256 public nextOrderId = 1;
     mapping(address => uint256) public userBalances;
     mapping(uint256 => Order) public orders;
@@ -150,11 +151,26 @@ contract AutoDCA is AutomationCompatibleInterface {
         if (!hasEnoughBalance) revert AutoDCA__InsufficientBalance();
         if (!timePassed) revert AutoDCA__InvalidInterval();
 
-        userBalances[order.user] -= order.usdcAmountPerSwap;
+        uint256 amountIn = order.usdcAmountPerSwap;
+
+        userBalances[order.user] -= amountIn;
         order.lastExecuted = block.timestamp;
 
-        // Uniswap v3 swap 
+        IERC20(I_USDC).forceApprove(address(I_SWAP_ROUTER), amountIn);
 
-        emit OrderExecuted(orderId, order.user, order.tokenToBuy, order.usdcAmountPerSwap, block.timestamp);
+        I_SWAP_ROUTER.exactInputSingle(
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: I_USDC,
+                tokenOut: order.tokenToBuy,
+                fee: POOL_FEE,
+                recipient: order.user,
+                deadline: block.timestamp + SWAP_DEADLINE,
+                amountIn: amountIn,
+                amountOutMinimum: 0, // TODO: add slippage protection
+                sqrtPriceLimitX96: 0
+            })
+        );
+
+        emit OrderExecuted(orderId, order.user, order.tokenToBuy, amountIn, block.timestamp);
     }
 }
