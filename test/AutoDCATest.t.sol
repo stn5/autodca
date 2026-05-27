@@ -11,6 +11,7 @@ contract TestAutoDCA is Test {
     MockUSDC usdc;
     MockSwapRouter swapRouter;
     address user = makeAddr("user");
+    address tokenToBuy = makeAddr("mockETH");
 
     uint256 constant USER_STARTING_BALANCE = 500e6;
     uint256 constant DEPOSIT_AMOUNT = 120e6;
@@ -19,6 +20,7 @@ contract TestAutoDCA is Test {
         usdc = new MockUSDC();
         swapRouter = new MockSwapRouter();
         autoDca = new AutoDCA(address(usdc), address(swapRouter));
+        autoDca.setAllowedToken(tokenToBuy, true);
         usdc.mint(user, USER_STARTING_BALANCE);
     }
 
@@ -88,7 +90,6 @@ contract TestAutoDCA is Test {
     /* Tests for createOrder func */
 
     function testCreateOrderSuccess() public {
-        address tokenToBuy = makeAddr("mockETH");
         uint256 usdcAmountPerSwap = 60e6;
         uint256 interval = 1 days;
 
@@ -120,19 +121,26 @@ contract TestAutoDCA is Test {
     function testCreateOrderRevertsIfLowAmountPerSwap() public {
         vm.prank(user);
         vm.expectRevert(AutoDCA.AutoDCA__AmountBelowMinimum.selector);
-        autoDca.createOrder(makeAddr("mockETH"), 20e6, 1 days);
+        autoDca.createOrder(tokenToBuy, 20e6, 1 days);
     }
 
     function testCreateOrderRevertsIfIntervalBelowMinimum() public {
         vm.prank(user);
         vm.expectRevert(AutoDCA.AutoDCA__InvalidInterval.selector);
-        autoDca.createOrder(makeAddr("mockETH"), 100e6, 1 hours);
+        autoDca.createOrder(tokenToBuy, 100e6, 1 hours);
+    }
+
+    function testCreateOrderRevertsIfTokenIsNotAllowed() public {
+        address notAllowedToken = makeAddr("mockBTC");
+
+        vm.prank(user);
+        vm.expectRevert(AutoDCA.AutoDCA__TokenNotAllowed.selector);
+        autoDca.createOrder(notAllowedToken, 100e6, 1 days);
     }
 
     /* Tests for updateOrder func */
 
     function testUpdateOrderSuccess() public {
-        address tokenToBuy = makeAddr("mockETH");
         uint256 updatedUsdcAmountToSwap = 200e6;
         uint256 updatedInterval = 10 days;
 
@@ -161,7 +169,7 @@ contract TestAutoDCA is Test {
         address user2 = makeAddr("user2");
 
         vm.prank(user);
-        uint256 orderId = autoDca.createOrder(makeAddr("mockETH"), 100e6, 2 weeks);
+        uint256 orderId = autoDca.createOrder(tokenToBuy, 100e6, 2 weeks);
 
         vm.prank(user2);
         vm.expectRevert(AutoDCA.AutoDCA__NotOrderOwner.selector);
@@ -171,8 +179,6 @@ contract TestAutoDCA is Test {
     /* Tests for cancelOrder func */
 
     function testCancelOrderSuccess() public {
-        address tokenToBuy = makeAddr("mockETH");
-
         vm.startPrank(user);
         uint256 orderId = autoDca.createOrder(tokenToBuy, 60e6, 1 days);
         autoDca.cancelOrder(orderId);
@@ -187,7 +193,7 @@ contract TestAutoDCA is Test {
         address user2 = makeAddr("user2");
 
         vm.prank(user);
-        uint256 orderId = autoDca.createOrder(makeAddr("mockETH"), 60e6, 1 days);
+        uint256 orderId = autoDca.createOrder(tokenToBuy, 60e6, 1 days);
 
         vm.prank(user2);
         vm.expectRevert(AutoDCA.AutoDCA__NotOrderOwner.selector);
@@ -196,7 +202,7 @@ contract TestAutoDCA is Test {
 
     function testCancelOrderRevertsIfOrderAlreadyInactive() public {
         vm.startPrank(user);
-        uint256 orderId = autoDca.createOrder(makeAddr("mockETH"), 60e6, 1 days);
+        uint256 orderId = autoDca.createOrder(tokenToBuy, 60e6, 1 days);
         autoDca.cancelOrder(orderId);
 
         vm.expectRevert(AutoDCA.AutoDCA__OrderAlreadyInactive.selector);
@@ -213,7 +219,7 @@ contract TestAutoDCA is Test {
 
     function testCheckUpkeepIfUserHasNoBalance() public {
         vm.prank(user);
-        autoDca.createOrder(makeAddr("mockETH"), 100e6, 7 days);
+        autoDca.createOrder(tokenToBuy, 100e6, 7 days);
 
         (bool upkeepNeeded,) = autoDca.checkUpkeep("");
         assertFalse(upkeepNeeded);
@@ -222,7 +228,7 @@ contract TestAutoDCA is Test {
     function testCheckUpkeepIfIntervalNotPassed() public {
         _deposit(DEPOSIT_AMOUNT);
         vm.prank(user);
-        autoDca.createOrder(makeAddr("mockETH"), 100e6, 7 days);
+        autoDca.createOrder(tokenToBuy, 100e6, 7 days);
 
         (bool upkeepNeeded,) = autoDca.checkUpkeep("");
         assertFalse(upkeepNeeded);
@@ -231,7 +237,7 @@ contract TestAutoDCA is Test {
     function testCheckUpkeepIfOrderIsReady() public {
         _deposit(DEPOSIT_AMOUNT);
         vm.prank(user);
-        uint256 orderId = autoDca.createOrder(makeAddr("mockETH"), 100e6, 7 days);
+        uint256 orderId = autoDca.createOrder(tokenToBuy, 100e6, 7 days);
 
         vm.warp(block.timestamp + 10 days);
 
@@ -243,7 +249,6 @@ contract TestAutoDCA is Test {
     /* Tests for performUpkeep func */
 
     function testPerformUpkeepSuccess() public {
-        address tokenToBuy = makeAddr("mockETH");
         _deposit(DEPOSIT_AMOUNT);
         vm.prank(user);
         uint256 orderId = autoDca.createOrder(tokenToBuy, 100e6, 7 days);
@@ -260,7 +265,7 @@ contract TestAutoDCA is Test {
 
     function testPerformUpkeepRevertsIfInsufficientBalance() public {
         vm.prank(user);
-        uint256 orderId = autoDca.createOrder(makeAddr("mockETH"), 100e6, 7 days);
+        uint256 orderId = autoDca.createOrder(tokenToBuy, 100e6, 7 days);
 
         vm.warp(block.timestamp + 10 days);
 
@@ -271,7 +276,7 @@ contract TestAutoDCA is Test {
     function testPerformUpkeepRevertsIfTimeNotPassed() public {
         _deposit(DEPOSIT_AMOUNT);
         vm.prank(user);
-        uint256 orderId = autoDca.createOrder(makeAddr("mockETH"), 100e6, 7 days);
+        uint256 orderId = autoDca.createOrder(tokenToBuy, 100e6, 7 days);
 
         vm.expectRevert(AutoDCA.AutoDCA__InvalidInterval.selector);
         autoDca.performUpkeep(abi.encode(orderId));
