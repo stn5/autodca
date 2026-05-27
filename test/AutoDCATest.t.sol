@@ -5,13 +5,15 @@ import {Test} from "forge-std/Test.sol";
 import {AutoDCA} from "../src/AutoDCA.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 import {MockSwapRouter} from "./mocks/MockSwapRouter.sol";
+import {MockV3Aggregator} from "./mocks/MockV3Aggregator.sol";
 
 contract TestAutoDCA is Test {
     AutoDCA autoDca;
     MockUSDC usdc;
     MockSwapRouter swapRouter;
+    MockV3Aggregator priceFeed;
     address user = makeAddr("user");
-    address tokenToBuy = makeAddr("mockETH");
+    address tokenToBuy = makeAddr("mockETH");    
 
     uint256 constant USER_STARTING_BALANCE = 500e6;
     uint256 constant DEPOSIT_AMOUNT = 120e6;
@@ -19,8 +21,9 @@ contract TestAutoDCA is Test {
     function setUp() external {
         usdc = new MockUSDC();
         swapRouter = new MockSwapRouter();
+        priceFeed = new MockV3Aggregator(8, 2000e8);
         autoDca = new AutoDCA(address(usdc), address(swapRouter));
-        autoDca.setAllowedToken(tokenToBuy, true);
+        autoDca.setAllowedToken(tokenToBuy, address(priceFeed), 18, true);
         usdc.mint(user, USER_STARTING_BALANCE);
     }
 
@@ -261,6 +264,8 @@ contract TestAutoDCA is Test {
         assertEq(swapRouter.tokenOut(), tokenToBuy);
         assertEq(swapRouter.recipient(), user);
         assertEq(swapRouter.amountIn(), 100e6);
+        // 100 USDC / $2000 = 0.05 tokenOut, minus 1% slippage = 0.0495 tokenOut
+        assertEq(swapRouter.amountOutMinimum(), 0.0495e18);
     }
 
     function testPerformUpkeepRevertsIfInsufficientBalance() public {
@@ -280,6 +285,31 @@ contract TestAutoDCA is Test {
 
         vm.expectRevert(AutoDCA.AutoDCA__InvalidInterval.selector);
         autoDca.performUpkeep(abi.encode(orderId));
+    }
+
+    /* Tests for token whitelist */
+
+    function testSetAllowedTokenSuccess() public {
+        address newToken = makeAddr("mockBTC");
+        address newPriceFeedAddress = makeAddr("priceFeedAddressBTC");
+        autoDca.setAllowedToken(newToken, newPriceFeedAddress, 18, true);
+
+        (bool isAllowed, address storedPriceFeedAddress, uint8 tokenDecimals) = autoDca.allowedTokens(newToken);
+        assertTrue(isAllowed);
+        assertEq(storedPriceFeedAddress, newPriceFeedAddress);
+        assertEq(tokenDecimals, 18);
+    }
+
+    function testSetAllowedTokenRevertsIfPriceFeedIsZero() public {
+        address newToken = makeAddr("mockBTC");
+        vm.expectRevert(AutoDCA.AutoDCA__InvalidPriceFeed.selector);
+        autoDca.setAllowedToken(newToken, address(0), 18, true);
+    }
+
+    function testSetAllowedTokenIfTokenIsNotAllowed() public {
+        autoDca.setAllowedToken(tokenToBuy, address(0), 18, false);
+        (bool isAllowed,,) = autoDca.allowedTokens(tokenToBuy);
+        assertFalse(isAllowed);
     }
 
     /* Deposit helper */

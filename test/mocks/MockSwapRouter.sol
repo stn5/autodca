@@ -10,12 +10,14 @@ contract MockSwapRouter {
     address public tokenOut;
     address public recipient;
     uint256 public amountIn;
+    uint256 public amountOutMinimum;
 
     function exactInputSingle(ISwapRouter.ExactInputSingleParams calldata params) external payable returns (uint256) {
         tokenIn = params.tokenIn;
         tokenOut = params.tokenOut;
         recipient = params.recipient;
         amountIn = params.amountIn;
+        amountOutMinimum = params.amountOutMinimum;
 
         return amountOut;
     }

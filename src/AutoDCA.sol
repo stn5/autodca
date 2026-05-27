@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/interfaces/AutomationCompatibleInterface.sol";
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 
@@ -20,6 +21,7 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
     error AutoDCA__OrderAlreadyInactive();
     error AutoDCA__OrderAlreadyExist();
     error AutoDCA__TokenNotAllowed();
+    error AutoDCA__InvalidPriceFeed();
 
     struct Order {
         address user;
@@ -30,18 +32,27 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
         bool isActive;
     }
 
+    struct TokenConfig {
+        bool isAllowed;
+        address priceFeedAddress;
+        uint8 tokenDecimals;
+    }
+
     address public immutable I_USDC;
     ISwapRouter public immutable I_SWAP_ROUTER;
     uint24 public constant POOL_FEE = 3000;
     uint256 public constant MINIMUM_DEPOSIT = 50e6;
     uint256 public constant MINIMUM_INTERVAL = 1 days;
     uint256 public constant SWAP_DEADLINE = 5 minutes;
+    uint256 public constant SLIPPAGE_BPS = 100; // 1%
+    uint256 public constant BPS_PRECISION = 10_000;
+    uint256 public constant USDC_PRECISION = 1e6;
     uint256 public nextOrderId = 1;
     address[] public allowedTokenList;
     mapping(address => uint256) public userBalances;
     mapping(uint256 => Order) public orders;
     mapping(address user => mapping(address tokenAddress => uint256 orderId)) public activeUserOrderIds;
-    mapping(address token => bool isAllowed) public allowedTokens;
+    mapping(address token => TokenConfig config) public allowedTokens;    
 
     /* Events */
     event Deposited(address indexed user, uint256 amount);
@@ -54,10 +65,11 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
         uint256 interval
     );
     event OrderExecuted(
-        uint256 indexed orderId, 
-        address indexed user, 
-        address indexed tokenToBuy, 
+        uint256 indexed orderId,
+        address indexed user,
+        address indexed tokenToBuy,
         uint256 usdcAmountSpent,
+        uint256 tokenAmountReceived,
         uint256 executedAt
     );
     event OrderUpdated(uint256 indexed orderId, uint256 usdcAmountPerSwap, uint256 interval);
@@ -86,7 +98,7 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
 
     function createOrder(address tokenToBuy, uint256 usdcAmountPerSwap, uint256 interval) external returns (uint256) {
         if (tokenToBuy == address(0)) revert AutoDCA__InvalidTokenAddress();
-        if (!allowedTokens[tokenToBuy]) revert AutoDCA__TokenNotAllowed();
+        if (!allowedTokens[tokenToBuy].isAllowed) revert AutoDCA__TokenNotAllowed();
         if (activeUserOrderIds[msg.sender][tokenToBuy] != 0) revert AutoDCA__OrderAlreadyExist();
         if (usdcAmountPerSwap < MINIMUM_DEPOSIT) revert AutoDCA__AmountBelowMinimum();
         if (interval < MINIMUM_INTERVAL) revert AutoDCA__InvalidInterval();
@@ -163,7 +175,7 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
 
         IERC20(I_USDC).forceApprove(address(I_SWAP_ROUTER), amountIn);
 
-        I_SWAP_ROUTER.exactInputSingle(
+        uint256 amountOut = I_SWAP_ROUTER.exactInputSingle(
             ISwapRouter.ExactInputSingleParams({
                 tokenIn: I_USDC,
                 tokenOut: order.tokenToBuy,
@@ -171,27 +183,54 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
                 recipient: order.user,
                 deadline: block.timestamp + SWAP_DEADLINE,
                 amountIn: amountIn,
-                amountOutMinimum: 0, // TODO: add slippage protection
+                amountOutMinimum: _getMinAmountOut(order.tokenToBuy, amountIn),
                 sqrtPriceLimitX96: 0
             })
         );
 
-        emit OrderExecuted(orderId, order.user, order.tokenToBuy, amountIn, block.timestamp);
+        emit OrderExecuted(orderId, order.user, order.tokenToBuy, amountIn, amountOut, block.timestamp);
     }
 
     /* Token whitelist managed by ownr */
 
-    function setAllowedToken(address token, bool isAllowed) external onlyOwner {
+    function setAllowedToken(address token, address priceFeedAddress, uint8 tokenDecimals, bool isAllowed) external onlyOwner {
         if (token == address(0)) revert AutoDCA__InvalidTokenAddress();
+        TokenConfig storage tokenConfig = allowedTokens[token];
 
-        if (isAllowed && !allowedTokens[token]) {
+        if (!isAllowed) {
+            tokenConfig.isAllowed = false;
+            return;
+        }
+
+        if (priceFeedAddress == address(0)) {
+            revert AutoDCA__InvalidPriceFeed();
+        }
+
+        if (!tokenConfig.isAllowed) {
             allowedTokenList.push(token);
         }
 
-        allowedTokens[token] = isAllowed;
+        tokenConfig.isAllowed = true;
+        tokenConfig.priceFeedAddress = priceFeedAddress;
+        tokenConfig.tokenDecimals = tokenDecimals;
     }
 
     function getAllowedTokens() external view returns (address[] memory) {
         return allowedTokenList;
+    }
+
+    function _getMinAmountOut(address tokenToBuy, uint256 usdcAmount) internal view returns (uint256) {
+        TokenConfig memory tokenConfig = allowedTokens[tokenToBuy];
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(tokenConfig.priceFeedAddress);
+        (,int256 price,,,) = priceFeed.latestRoundData();
+
+        if (price <= 0) revert AutoDCA__InvalidPriceFeed();
+
+        uint256 tokenPrecision = 10 ** tokenConfig.tokenDecimals;
+        uint256 priceFeedPrecision = 10 ** priceFeed.decimals();
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 expectedAmountOut = (usdcAmount * tokenPrecision * priceFeedPrecision) / (uint256(price) * USDC_PRECISION);
+
+        return (expectedAmountOut * (BPS_PRECISION - SLIPPAGE_BPS)) / BPS_PRECISION;
     }
 }
