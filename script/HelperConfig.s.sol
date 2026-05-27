@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import {Script} from "forge-std/Script.sol";
 import {MockUSDC} from "../test/mocks/MockUSDC.sol";
+import {MockSwapRouter} from "../test/mocks/MockSwapRouter.sol";
 
 abstract contract CodeConstants {
     uint256 public constant ETH_SEPOLIA_CHAIN_ID = 11155111;
@@ -61,11 +62,12 @@ contract HelperConfig is CodeConstants, Script {
 
         vm.startBroadcast();
         MockUSDC mockUsdc = new MockUSDC();
+        MockSwapRouter mockSwapRouter = new MockSwapRouter();
         vm.stopBroadcast();
 
         localNetworkConfig = NetworkConfig({
             usdc: address(mockUsdc),
-            swapRouter: makeAddr("swapRouter")
+            swapRouter: address(mockSwapRouter)
         });
         return localNetworkConfig;
     }
