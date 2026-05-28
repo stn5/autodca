@@ -2,6 +2,7 @@
 cache/
 out/
 broadcast/
+backend/dist/
 
 # Dotenv file
 .env
