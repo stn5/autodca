@@ -18,7 +18,7 @@ async function onOrderCreated(
     usdcAmountPerSwap: bigint,
     interval: bigint,
     createdAt: bigint,
-    event: ethers.EventLog
+    event: ethers.ContractEventPayload
 ) {
     try {
         await handleOrderCreated(
@@ -28,8 +28,8 @@ async function onOrderCreated(
             usdcAmountPerSwap,
             interval,
             createdAt,
-            event.transactionHash,
-            event.blockNumber
+            event.log.transactionHash,
+            event.log.blockNumber
         );
         console.log(`Indexed OrderCreated: ${orderId.toString()}`);
     } catch (error) {
@@ -41,15 +41,15 @@ async function onOrderUpdated(
     orderId: bigint,
     usdcAmountPerSwap: bigint,
     interval: bigint,
-    event: ethers.EventLog
+    event: ethers.ContractEventPayload
 ) {
     try {
         await handleOrderUpdated(
             orderId,
             usdcAmountPerSwap,
             interval,
-            event.transactionHash,
-            event.blockNumber
+            event.log.transactionHash,
+            event.log.blockNumber
         );
         console.log(`Indexed OrderUpdated: ${orderId.toString()}`);
     } catch (error) {
@@ -57,12 +57,12 @@ async function onOrderUpdated(
     }
 }
 
-async function onOrderCancelled(orderId: bigint, event: ethers.EventLog) {
+async function onOrderCancelled(orderId: bigint, event: ethers.ContractEventPayload) {
     try {
         await handleOrderCancelled(
             orderId,
-            event.transactionHash,
-            event.blockNumber
+            event.log.transactionHash,
+            event.log.blockNumber
         );
         console.log(`Indexed OrderCancelled: ${orderId.toString()}`);
     } catch (error) {
@@ -77,7 +77,7 @@ async function onOrderExecuted(
     usdcAmountSpent: bigint,
     tokenAmountReceived: bigint,
     executedAt: bigint,
-    event: ethers.EventLog
+    event: ethers.ContractEventPayload
 ) {
     try {
         await handleOrderExecuted(
@@ -87,8 +87,8 @@ async function onOrderExecuted(
             usdcAmountSpent,
             tokenAmountReceived,
             executedAt,
-            event.transactionHash,
-            event.blockNumber
+            event.log.transactionHash,
+            event.log.blockNumber
         );
         console.log(`Indexed OrderExecuted: ${orderId.toString()}`);
     } catch (error) {
