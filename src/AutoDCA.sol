@@ -62,7 +62,8 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
         address indexed user,
         address indexed tokenToBuy,
         uint256 usdcAmountPerSwap,
-        uint256 interval
+        uint256 interval,
+        uint256 createdAt
     );
     event OrderExecuted(
         uint256 indexed orderId,
@@ -116,7 +117,7 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
         activeUserOrderIds[msg.sender][tokenToBuy] = orderId;
         nextOrderId++;
 
-        emit OrderCreated(orderId, msg.sender, tokenToBuy, usdcAmountPerSwap, interval);
+        emit OrderCreated(orderId, msg.sender, tokenToBuy, usdcAmountPerSwap, interval, block.timestamp);
         return orderId;
     }
 
