@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { ethers } from "ethers";
 import { autoDcaAbi } from "../contracts/autoDcaAbi";
-import { handleOrderCreated } from "./handlers";
+import { handleOrderCreated, handleOrderUpdated, handleOrderCancelled, handleOrderExecuted } from "./handlers";
 
 const { RPC_URL, AUTO_DCA_ADDRESS } = process.env;
 
@@ -37,9 +37,71 @@ async function onOrderCreated(
     }
 }
 
+async function onOrderUpdated(
+    orderId: bigint,
+    usdcAmountPerSwap: bigint,
+    interval: bigint,
+    event: ethers.EventLog
+) {
+    try {
+        await handleOrderUpdated(
+            orderId,
+            usdcAmountPerSwap,
+            interval,
+            event.transactionHash,
+            event.blockNumber
+        );
+        console.log(`Indexed OrderUpdated: ${orderId.toString()}`);
+    } catch (error) {
+        console.error("Failed to index OrderUpdated:", error);
+    }
+}
+
+async function onOrderCancelled(orderId: bigint, event: ethers.EventLog) {
+    try {
+        await handleOrderCancelled(
+            orderId,
+            event.transactionHash,
+            event.blockNumber
+        );
+        console.log(`Indexed OrderCancelled: ${orderId.toString()}`);
+    } catch (error) {
+        console.error("Failed to index OrderCancelled:", error);
+    }
+}
+
+async function onOrderExecuted(
+    orderId: bigint,
+    user: string,
+    tokenToBuy: string,
+    usdcAmountSpent: bigint,
+    tokenAmountReceived: bigint,
+    executedAt: bigint,
+    event: ethers.EventLog
+) {
+    try {
+        await handleOrderExecuted(
+            orderId,
+            user,
+            tokenToBuy,
+            usdcAmountSpent,
+            tokenAmountReceived,
+            executedAt,
+            event.transactionHash,
+            event.blockNumber
+        );
+        console.log(`Indexed OrderExecuted: ${orderId.toString()}`);
+    } catch (error) {
+        console.error("Failed to index OrderExecuted:", error);
+    }
+}
+
 function startIndexer() {
     console.log(`Indexer listening AutoDCA: ${AUTO_DCA_ADDRESS}`);
     autoDca.on("OrderCreated", onOrderCreated);
+    autoDca.on("OrderUpdated", onOrderUpdated);
+    autoDca.on("OrderCancelled", onOrderCancelled);
+    autoDca.on("OrderExecuted", onOrderExecuted);
 }
 
 startIndexer();
