@@ -2,6 +2,7 @@ import "dotenv/config";
 import { ethers } from "ethers";
 import { autoDcaAbi } from "../contracts/autoDcaAbi";
 import { handleOrderCreated, handleOrderUpdated, handleOrderCancelled, handleOrderExecuted } from "./handlers";
+import { syncPastEvents } from "./syncPastEvents";
 
 const { RPC_URL, AUTO_DCA_ADDRESS } = process.env;
 
@@ -96,7 +97,7 @@ async function onOrderExecuted(
     }
 }
 
-function startIndexer() {
+function startLiveListeners() {
     console.log(`Indexer listening AutoDCA: ${AUTO_DCA_ADDRESS}`);
     autoDca.on("OrderCreated", onOrderCreated);
     autoDca.on("OrderUpdated", onOrderUpdated);
@@ -104,4 +105,14 @@ function startIndexer() {
     autoDca.on("OrderExecuted", onOrderExecuted);
 }
 
-startIndexer();
+async function startIndexer() {
+    const fromBlock = Number(0);
+
+    await syncPastEvents(autoDca, fromBlock);
+    startLiveListeners();
+}
+
+startIndexer().catch((error) => {
+    console.error("Indexer failed:", error);
+    process.exit(1);
+});

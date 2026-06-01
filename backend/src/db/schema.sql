@@ -1,11 +1,3 @@
-CREATE TABLE IF NOT EXISTS tokens (
-    token_address TEXT PRIMARY KEY,
-    token_decimals INTEGER NOT NULL,
-    price_feed_address TEXT NOT NULL,
-    is_allowed BOOLEAN NOT NULL,
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
 CREATE TABLE IF NOT EXISTS orders (
     order_id NUMERIC PRIMARY KEY,
     user_address TEXT NOT NULL,
@@ -34,3 +26,4 @@ CREATE TABLE IF NOT EXISTS executions (
 CREATE INDEX IF NOT EXISTS idx_orders_user_address ON orders(user_address);
 CREATE INDEX IF NOT EXISTS idx_executions_user_address ON executions(user_address);
 CREATE INDEX IF NOT EXISTS idx_executions_order_id ON executions(order_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_executions_tx_hash ON executions(tx_hash);
