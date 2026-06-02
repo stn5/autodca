@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getTokens, getUserBalance, getUserOrders, getUserExecutions, type Token, type UserBalance, type Order, type Execution } from "../api";
+import { getUserBalance, getUserOrders, getUserExecutions, type UserBalance, type Order, type Execution } from "../api";
 import { formatUsdc } from "../helpers/format";
 import { OrdersTable } from "../components/OrdersTable";
 import { ExecutionsTable } from "../components/ExecutionsTable";
