@@ -22,10 +22,12 @@ A decentralized DCA application that automates recurring token purchases at user
 
 ## Tech Stack
  
-**Smart Contract:** Solidity, Foundry, OpenZeppelin, Chainlink Automation, Chainlink Price Feeds, Uniswap V3
-**Backend:** TypeScript, Ethers.js
-**Frontend:** React, TypeScript, Vite, SCSS
-**Database:** PostgreSQL, Supabase
+| | |
+|---|---|
+| Smart Contract | Solidity, Foundry, OpenZeppelin, Chainlink Automation, Chainlink Price Feeds, Uniswap V3 |
+| Backend | TypeScript, Ethers.js |
+| Frontend | React, TypeScript, Vite, SCSS |
+| Database | PostgreSQL, Supabase |
 
 ## Project Structure
  
