@@ -5,3 +5,15 @@ body {
   color: $text-color;
   background: $background-color;
 }
+
+.modal {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(0, 0, 0, 0.6);
+}
+
+.modal__content {
+    background: black;
+}

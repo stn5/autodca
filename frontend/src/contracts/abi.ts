@@ -1,5 +1,6 @@
 export const autoDcaAbi = [
     "function createOrder(address tokenToBuy, uint256 usdcAmountPerSwap, uint256 interval)",
+    "function updateOrder(uint256 orderId, uint256 usdcAmountPerSwap, uint256 interval)",
     "function cancelOrder(uint256 orderId)",
     "function deposit(uint256 amount)",
     "function withdraw(uint256 amount)"

@@ -30,6 +30,13 @@ export async function createOrder(tokenAddress: string, usdcAmount: string, inte
     await tx.wait();
 }
 
+export async function updateOrder(orderId: string, usdcAmount: string, intervalSeconds: string) {
+    const autoDca = await getAutoDcaContract();
+
+    const tx = await autoDca.updateOrder(orderId, parseUnits(usdcAmount, 6), intervalSeconds);
+    await tx.wait();
+}
+
 export async function cancelOrder(orderId: string) {
     const autoDca = await getAutoDcaContract();
 
@@ -62,3 +69,4 @@ export async function getWalletUsdcBalance(account: string) {
     const balance: bigint = await usdc.balanceOf(account);
     return balance.toString();
 }
+

@@ -4,10 +4,11 @@ import { formatInterval, formatUsdc } from "../helpers/format";
 type OrdersTableProps = {
     title: string;
     orders: Order[];
+    onEdit?: (order: Order) => void;
     onCancel?: (orderId: string) => Promise<void>;
 };
 
-export function OrdersTable({ title, orders }: OrdersTableProps) {
+export function OrdersTable({ title, orders, onEdit, onCancel }: OrdersTableProps) {
     if (!orders.length) {
         return (
             <section>
@@ -28,6 +29,8 @@ export function OrdersTable({ title, orders }: OrdersTableProps) {
                         <th>Token</th>
                         <th>$/swap</th>
                         <th>Interval</th>
+                        {onEdit && <th>Edit</th>}
+                        {onCancel && <th>Cancel</th>}
                     </tr>
                 </thead>
 
@@ -38,6 +41,16 @@ export function OrdersTable({ title, orders }: OrdersTableProps) {
                             <td>{order.token_address}</td>
                             <td>${formatUsdc(order.usdc_amount_per_swap)}</td>
                             <td>{formatInterval(order.interval_seconds)}</td>
+                            {onEdit && (
+                                <td>
+                                    <button onClick={() => onEdit(order)}>Edit</button>
+                                </td>
+                            )}
+                             {onCancel && (
+                                <td>
+                                    <button onClick={() => onCancel(order.order_id)}>Cancel</button>
+                                </td>
+                            )}
                         </tr>
                     ))}
                 </tbody>

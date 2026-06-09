@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "scripts": {
-    "dev": "tsx src/index.ts",
+ "scripts": {
+    "dev": "concurrently \"npm run api\" \"npm run indexer\"",
     "api": "tsx src/api/server.ts",
     "indexer": "tsx src/indexer/index.ts",
     "build": "tsc",
@@ -27,6 +27,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^25.9.1",
     "@types/pg": "^8.20.0",
+    "concurrently": "^10.0.3",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3"
   }
