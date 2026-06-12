@@ -40,7 +40,7 @@ contract TestAutoDCA is Test {
     /* Tests for deposit func */
 
     function testMinimumDepositIsFifty() public view {
-        assertEq(autoDca.MINIMUM_DEPOSIT(), 50e6);
+        assertEq(autoDca.MINIMUM_DEPOSIT(), 10e6);
     }
 
     function testDepositSuccess() public {
@@ -124,7 +124,7 @@ contract TestAutoDCA is Test {
     function testCreateOrderRevertsIfLowAmountPerSwap() public {
         vm.prank(user);
         vm.expectRevert(AutoDCA.AutoDCA__AmountBelowMinimum.selector);
-        autoDca.createOrder(tokenToBuy, 20e6, 1 days);
+        autoDca.createOrder(tokenToBuy, 5e6, 1 days);
     }
 
     function testCreateOrderRevertsIfIntervalBelowMinimum() public {

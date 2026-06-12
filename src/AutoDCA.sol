@@ -41,7 +41,7 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
     address public immutable I_USDC;
     ISwapRouter public immutable I_SWAP_ROUTER;
     uint24 public constant POOL_FEE = 3000;
-    uint256 public constant MINIMUM_DEPOSIT = 50e6;
+    uint256 public constant MINIMUM_DEPOSIT = 10e6;
     uint256 public constant MINIMUM_INTERVAL = 1 days;
     uint256 public constant SWAP_DEADLINE = 5 minutes;
     uint256 public constant SLIPPAGE_BPS = 100; // 1%
