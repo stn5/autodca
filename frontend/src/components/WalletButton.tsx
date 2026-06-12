@@ -1,12 +1,13 @@
 type WalletButtonProps = {
     account: string | null;
     connectWallet: () => Promise<void>;
+    disconnectWallet: () => Promise<void>;
 };
 
-export function WalletButton({ account, connectWallet }: WalletButtonProps) {
+export function WalletButton({ account, connectWallet, disconnectWallet }: WalletButtonProps) {
     return (
-        <button onClick={connectWallet}>
-            {account ? `...${account.slice(-4)}` : "Connect Wallet"}
+        <button onClick={account ? disconnectWallet : connectWallet}>
+            {account ? "Disconnect" : "Connect Wallet"}
         </button>
     );
 }

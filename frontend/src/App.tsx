@@ -9,7 +9,7 @@ function App() {
         <main className="app">
             <header>
                 <h1>AutoDCA</h1>
-                <WalletButton account={wallet.account} connectWallet={wallet.connectWallet} />
+                <WalletButton account={wallet.account} connectWallet={wallet.connectWallet} disconnectWallet={wallet.disconnectWallet}/>
             </header>
             {wallet.account && <Dashboard account={wallet.account} />}
         </main>

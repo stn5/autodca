@@ -12,5 +12,16 @@ export function useWallet() {
         setAccount(address);
     }
 
-    return { account, connectWallet };
+    async function disconnectWallet() {
+        if (!window.ethereum) return;
+
+        await window.ethereum.request({
+            method: "wallet_revokePermissions",
+            params: [{ eth_accounts: {} }]
+        });
+
+        setAccount(null);
+    }
+
+    return { account, connectWallet, disconnectWallet };
 }

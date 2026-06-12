@@ -84,7 +84,7 @@ export function Dashboard({ account }: DashboardProps) {
             <p>Connected: {account}</p>
             <p>Wallet balance: ${formatUsdc(walletUsdcBalance)}</p>
             <p>Contract balance: ${formatUsdc(balance?.usdcBalance ?? "0")}</p>
-            <p>Orders: {orders.length}</p>
+            <p>Active Orders: {activeOrders.length}</p>
             <OrdersTable title="Active orders" orders={activeOrders} onCancel={handleCancelOrder} onEdit={setSelectedOrder}/>
             <OrdersTable title="Cancelled orders" orders={cancelledOrders} />
             <ExecutionsTable executions={executions} />
