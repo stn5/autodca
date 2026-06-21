@@ -7,8 +7,9 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/interfaces/AutomationCompatibleInterface.sol";
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract AutoDCA is AutomationCompatibleInterface, Ownable {
+contract AutoDCA is AutomationCompatibleInterface, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     /* Errors */
@@ -20,8 +21,11 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
     error AutoDCA__NotOrderOwner();
     error AutoDCA__OrderAlreadyInactive();
     error AutoDCA__OrderAlreadyExist();
+    error AutoDCA__OrderNotReady();
     error AutoDCA__TokenNotAllowed();
     error AutoDCA__InvalidPriceFeed();
+    error AutoDCA__StalePrice();
+    error AutoDCA__InvalidHeartbeat();
 
     struct Order {
         address user;
@@ -36,6 +40,7 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
         bool isAllowed;
         address priceFeedAddress;
         uint8 tokenDecimals;
+        uint256 priceFeedHeartbeat;
     }
 
     address public immutable I_USDC;
@@ -48,9 +53,11 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
     uint256 public constant BPS_PRECISION = 10_000;
     uint256 public constant USDC_PRECISION = 1e6;
     uint256 public nextOrderId = 1;
+    uint256[] public activeOrderIds;
     address[] public allowedTokenList;
     mapping(address => uint256) public userBalances;
     mapping(uint256 => Order) public orders;
+    mapping(uint256 orderId => uint256 index) private activeOrderIndex;
     mapping(address user => mapping(address tokenAddress => uint256 orderId)) public activeUserOrderIds;
     mapping(address token => TokenConfig config) public allowedTokens;    
 
@@ -75,6 +82,7 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
     );
     event OrderUpdated(uint256 indexed orderId, uint256 usdcAmountPerSwap, uint256 interval);
     event OrderCancelled(uint256 indexed orderId);
+    event TokenConfigured(address indexed token, address priceFeed, uint8 decimals, uint256 heartbeat, bool isAllowed);
 
     constructor(address usdc, address swapRouter) Ownable(msg.sender) {
         if (usdc == address(0) || swapRouter == address(0)) revert AutoDCA__InvalidTokenAddress();
@@ -82,14 +90,14 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
         I_SWAP_ROUTER = ISwapRouter(swapRouter);
     }
 
-    function deposit(uint256 amount) external {
+    function deposit(uint256 amount) external nonReentrant {
         if (amount < MINIMUM_DEPOSIT) revert AutoDCA__AmountBelowMinimum();
         IERC20(I_USDC).safeTransferFrom(msg.sender, address(this), amount);
         userBalances[msg.sender] += amount;
         emit Deposited(msg.sender, amount);
     }
 
-    function withdraw(uint256 amount) external {
+    function withdraw(uint256 amount) external nonReentrant {
         if (amount == 0) revert AutoDCA__AmountMustBeGreaterThanZero();
         if (userBalances[msg.sender] < amount) revert AutoDCA__InsufficientBalance();
         userBalances[msg.sender] -= amount;
@@ -115,6 +123,7 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
         });
 
         activeUserOrderIds[msg.sender][tokenToBuy] = orderId;
+        _addToActiveSet(orderId);
         nextOrderId++;
 
         emit OrderCreated(orderId, msg.sender, tokenToBuy, usdcAmountPerSwap, interval, block.timestamp);
@@ -141,12 +150,14 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
 
         order.isActive = false;
         activeUserOrderIds[msg.sender][order.tokenToBuy] = 0;
+        _removeFromActiveSet(orderId);
 
         emit OrderCancelled(orderId);
     }
 
     function checkUpkeep(bytes calldata) external view override returns (bool upkeepNeeded, bytes memory performData) {
-        for (uint256 orderId = 1; orderId < nextOrderId; orderId++) {
+        for (uint256 i = 0; i < activeOrderIds.length; i++) {
+            uint256 orderId = activeOrderIds[i];
             Order memory order = orders[orderId];
             bool hasEnoughBalance = userBalances[order.user] >= order.usdcAmountPerSwap;
             bool timePassed = block.timestamp >= order.lastExecuted + order.interval;
@@ -159,7 +170,7 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
         return (false, "");
     }
 
-    function performUpkeep(bytes calldata performData) external override {
+    function performUpkeep(bytes calldata performData) external override nonReentrant {
         uint256 orderId = abi.decode(performData, (uint256));
         Order storage order = orders[orderId];
         bool hasEnoughBalance = userBalances[order.user] >= order.usdcAmountPerSwap;
@@ -167,7 +178,7 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
 
         if (!order.isActive) revert AutoDCA__OrderAlreadyInactive();
         if (!hasEnoughBalance) revert AutoDCA__InsufficientBalance();
-        if (!timePassed) revert AutoDCA__InvalidInterval();
+        if (!timePassed) revert AutoDCA__OrderNotReady();
 
         uint256 amountIn = order.usdcAmountPerSwap;
 
@@ -189,23 +200,24 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
             })
         );
 
+        IERC20(I_USDC).forceApprove(address(I_SWAP_ROUTER), 0);
         emit OrderExecuted(orderId, order.user, order.tokenToBuy, amountIn, amountOut, block.timestamp);
     }
 
     /* Token whitelist managed by ownr */
 
-    function setAllowedToken(address token, address priceFeedAddress, uint8 tokenDecimals, bool isAllowed) external onlyOwner {
+    function setAllowedToken(address token, address priceFeedAddress, uint8 tokenDecimals, uint256 heartbeat, bool isAllowed) external onlyOwner {
         if (token == address(0)) revert AutoDCA__InvalidTokenAddress();
         TokenConfig storage tokenConfig = allowedTokens[token];
 
         if (!isAllowed) {
             tokenConfig.isAllowed = false;
+            emit TokenConfigured(token, tokenConfig.priceFeedAddress, tokenConfig.tokenDecimals, tokenConfig.priceFeedHeartbeat, false);
             return;
         }
 
-        if (priceFeedAddress == address(0)) {
-            revert AutoDCA__InvalidPriceFeed();
-        }
+        if (priceFeedAddress == address(0)) revert AutoDCA__InvalidPriceFeed();
+        if (heartbeat == 0) revert AutoDCA__InvalidHeartbeat();
 
         if (!tokenConfig.isAllowed) {
             allowedTokenList.push(token);
@@ -214,22 +226,56 @@ contract AutoDCA is AutomationCompatibleInterface, Ownable {
         tokenConfig.isAllowed = true;
         tokenConfig.priceFeedAddress = priceFeedAddress;
         tokenConfig.tokenDecimals = tokenDecimals;
+        tokenConfig.priceFeedHeartbeat = heartbeat;
+
+        emit TokenConfigured(token, priceFeedAddress, tokenDecimals, heartbeat, true);
     }
 
     function getAllowedTokens() external view returns (address[] memory) {
         return allowedTokenList;
     }
 
+    function getActiveOrderIds() external view returns (uint256[] memory) {
+        return activeOrderIds;
+    }
+
+    function getActiveOrderCount() external view returns (uint256) {
+        return activeOrderIds.length;
+    }
+
+    function getOrder(uint256 orderId) external view returns (Order memory) {
+        return orders[orderId];
+    }
+
+    function _addToActiveSet(uint256 orderId) private {
+        activeOrderIndex[orderId] = activeOrderIds.length;
+        activeOrderIds.push(orderId);
+    }
+
+    function _removeFromActiveSet(uint256 orderId) private {
+        uint256 index = activeOrderIndex[orderId];
+        uint256 lastIndex = activeOrderIds.length - 1;
+
+        if (index != lastIndex) {
+            uint256 lastOrderId = activeOrderIds[lastIndex];
+            activeOrderIds[index] = lastOrderId;
+            activeOrderIndex[lastOrderId] = index;
+        }
+
+        activeOrderIds.pop();
+        delete activeOrderIndex[orderId];
+    }
+
     function _getMinAmountOut(address tokenToBuy, uint256 usdcAmount) internal view returns (uint256) {
         TokenConfig memory tokenConfig = allowedTokens[tokenToBuy];
         AggregatorV3Interface priceFeed = AggregatorV3Interface(tokenConfig.priceFeedAddress);
-        (,int256 price,,,) = priceFeed.latestRoundData();
+        (, int256 price,, uint256 updatedAt,) = priceFeed.latestRoundData();
 
         if (price <= 0) revert AutoDCA__InvalidPriceFeed();
+        if (updatedAt == 0 || block.timestamp - updatedAt > tokenConfig.priceFeedHeartbeat) revert AutoDCA__StalePrice();
 
         uint256 tokenPrecision = 10 ** tokenConfig.tokenDecimals;
         uint256 priceFeedPrecision = 10 ** priceFeed.decimals();
-        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 expectedAmountOut = (usdcAmount * tokenPrecision * priceFeedPrecision) / (uint256(price) * USDC_PRECISION);
 
         return (expectedAmountOut * (BPS_PRECISION - SLIPPAGE_BPS)) / BPS_PRECISION;

@@ -23,7 +23,7 @@ contract TestAutoDCA is Test {
         swapRouter = new MockSwapRouter();
         priceFeed = new MockV3Aggregator(8, 2000e8);
         autoDca = new AutoDCA(address(usdc), address(swapRouter));
-        autoDca.setAllowedToken(tokenToBuy, address(priceFeed), 18, true);
+        autoDca.setAllowedToken(tokenToBuy, address(priceFeed), 18, 1 hours, true);
         usdc.mint(user, USER_STARTING_BALANCE);
     }
 
@@ -283,7 +283,7 @@ contract TestAutoDCA is Test {
         vm.prank(user);
         uint256 orderId = autoDca.createOrder(tokenToBuy, 100e6, 7 days);
 
-        vm.expectRevert(AutoDCA.AutoDCA__InvalidInterval.selector);
+        vm.expectRevert(AutoDCA.AutoDCA__OrderNotReady.selector);
         autoDca.performUpkeep(abi.encode(orderId));
     }
 
@@ -292,23 +292,24 @@ contract TestAutoDCA is Test {
     function testSetAllowedTokenSuccess() public {
         address newToken = makeAddr("mockBTC");
         address newPriceFeedAddress = makeAddr("priceFeedAddressBTC");
-        autoDca.setAllowedToken(newToken, newPriceFeedAddress, 18, true);
+        autoDca.setAllowedToken(newToken, newPriceFeedAddress, 18, 1 hours, true);
 
-        (bool isAllowed, address storedPriceFeedAddress, uint8 tokenDecimals) = autoDca.allowedTokens(newToken);
+        (bool isAllowed, address storedPriceFeedAddress, uint8 tokenDecimals, uint256 heartbeat) = autoDca.allowedTokens(newToken);
         assertTrue(isAllowed);
         assertEq(storedPriceFeedAddress, newPriceFeedAddress);
         assertEq(tokenDecimals, 18);
+        assertEq(heartbeat, 1 hours);
     }
 
     function testSetAllowedTokenRevertsIfPriceFeedIsZero() public {
         address newToken = makeAddr("mockBTC");
         vm.expectRevert(AutoDCA.AutoDCA__InvalidPriceFeed.selector);
-        autoDca.setAllowedToken(newToken, address(0), 18, true);
+        autoDca.setAllowedToken(newToken, address(0), 18, 1 hours, true);
     }
 
     function testSetAllowedTokenIfTokenIsNotAllowed() public {
-        autoDca.setAllowedToken(tokenToBuy, address(0), 18, false);
-        (bool isAllowed,,) = autoDca.allowedTokens(tokenToBuy);
+        autoDca.setAllowedToken(tokenToBuy, address(0), 18, 1 hours, false);
+        (bool isAllowed,,,) = autoDca.allowedTokens(tokenToBuy);
         assertFalse(isAllowed);
     }
 
