@@ -2,6 +2,8 @@
 
 A decentralized DCA application that automates recurring token purchases at user-defined intervals using Chainlink Automation and Uniswap V3
 
+> **Live on Base mainnet** — [Verified contract on BaseScan](https://basescan.org/address/0x5f1c2cDe8F24CA4B00A02351ABC395DA09310157)
+
 ## How it works
 
 1. Deposit USDC into the smart contract
@@ -71,9 +73,12 @@ forge test
 ```bash
 forge script script/AutoDCADeploy.s.sol:DeployAutoDCA \
   --rpc-url $RPC_URL \
-  --private-key $PRIVATE_KEY \
+  --account deployer \
   --broadcast
 ```
+
+> Uses a Foundry keystore account (`--account`) instead of a raw private key.
+> Import one with `cast wallet import deployer --interactive`.
  
 ### Backend
  
